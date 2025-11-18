@@ -47,7 +47,7 @@ ACCUMULATION_DAYS_LOOKBACK = 10
 # --------- EXPIRIES FOR KEPT INDICES ---------
 EXPIRIES = {
     "NIFTY": "25 NOV 2025",
-    "BANKNIFTY": "25 NOV 2025",
+    "BANKNIFTY": "25 NOV 2025", 
     "SENSEX": "20 NOV 2025",
     "MIDCPNIFTY": "25 NOV 2025"
 }
@@ -223,9 +223,9 @@ def fetch_option_price(symbol, retries=3, delay=3):
             time.sleep(delay)
     return None
 
-# 🚨 NEW: EXPIRY VALIDATION FUNCTIONS 🚨
+# 🚨 FIXED: STRICT EXPIRY VALIDATION FUNCTIONS 🚨
 def validate_option_symbol(index, symbol, strike, opttype):
-    """Enhanced validation to ensure only specified expiry symbols are used"""
+    """STRICT validation to ensure ONLY specified expiry symbols are used"""
     try:
         # Get the expected expiry for this index
         expected_expiry = EXPIRIES.get(index)
@@ -235,43 +235,58 @@ def validate_option_symbol(index, symbol, strike, opttype):
         # Parse expected expiry date
         expected_dt = datetime.strptime(expected_expiry, "%d %b %Y")
         
-        # Check if symbol contains the expected expiry
-        # For SENSEX: SENSEX25NOV25000CE format
+        # STRICT CHECK: For SENSEX: SENSEX25NOV25000CE format
         if index == "SENSEX":
-            year_short = expected_dt.strftime("%y")
-            month_code = expected_dt.strftime("%b").upper()
-            expected_pattern = f"SENSEX{year_short}{month_code}"
-            return expected_pattern in symbol.upper()
-        else:
-            # For NIFTY/BANKNIFTY/MIDCPNIFTY: NIFTY18NOV2521500CE format
-            expected_pattern = expected_dt.strftime("%d%b%y").upper()
-            return expected_pattern in symbol.upper()
+            year_short = expected_dt.strftime("%y")  # 25
+            month_code = expected_dt.strftime("%b").upper()  # NOV
+            day = expected_dt.strftime("%d")  # 25
+            expected_pattern = f"SENSEX{day}{month_code}{year_short}"
+            symbol_upper = symbol.upper()
             
+            # Check if symbol contains EXACTLY this pattern
+            if expected_pattern in symbol_upper:
+                return True
+            else:
+                print(f"❌ SENSEX expiry mismatch: Expected {expected_pattern}, Got {symbol_upper}")
+                return False
+        else:
+            # STRICT CHECK: For NIFTY/BANKNIFTY/MIDCPNIFTY: NIFTY25NOV2521500CE format
+            expected_pattern = expected_dt.strftime("%d%b%y").upper()  # 25NOV25
+            symbol_upper = symbol.upper()
+            
+            # Check if symbol contains EXACTLY this pattern
+            if expected_pattern in symbol_upper:
+                return True
+            else:
+                print(f"❌ {index} expiry mismatch: Expected {expected_pattern}, Got {symbol_upper}")
+                return False
+                
     except Exception as e:
         print(f"Symbol validation error: {e}")
         return False
 
-# --------- FIXED: GET OPTION SYMBOL WITH EXPIRY VALIDATION ---------
+# 🚨 FIXED: GET OPTION SYMBOL WITH STRICT EXPIRY VALIDATION 🚨
 def get_option_symbol(index, expiry_str, strike, opttype):
-    """FIXED: Each index uses its own isolated strike calculation with expiry validation"""
+    """STRICTLY generates symbols ONLY with specified expiries"""
     try:
         dt = datetime.strptime(expiry_str, "%d %b %Y")
         
         if index == "SENSEX":
-            year_short = dt.strftime("%y")
-            month_code = dt.strftime("%b").upper()
-            day = dt.strftime("%d")
-            symbol = f"SENSEX{year_short}{month_code}{strike}{opttype}"
+            year_short = dt.strftime("%y")  # 25
+            month_code = dt.strftime("%b").upper()  # NOV
+            day = dt.strftime("%d")  # 25
+            symbol = f"SENSEX{day}{month_code}{year_short}{strike}{opttype}"
         elif index == "MIDCPNIFTY":
             symbol = f"MIDCPNIFTY{dt.strftime('%d%b%y').upper()}{strike}{opttype}"
         else:
             symbol = f"{index}{dt.strftime('%d%b%y').upper()}{strike}{opttype}"
         
-        # Validate the generated symbol
+        # STRICT VALIDATION: Validate the generated symbol
         if validate_option_symbol(index, symbol, strike, opttype):
+            print(f"✅ Valid symbol generated: {symbol}")
             return symbol
         else:
-            print(f"⚠️ Generated symbol validation failed: {symbol}")
+            print(f"❌ Generated symbol validation FAILED: {symbol}")
             return None
             
     except Exception as e:
@@ -1574,7 +1589,7 @@ def send_individual_signal_reports():
     # 🚨 COMPULSORY CONFIRMATION
     send_telegram("✅ END OF DAY REPORTS COMPLETED! See you tomorrow at 9:15 AM! 🚀")
 
-# --------- FIXED: UPDATED SIGNAL SENDING WITH EXPIRY VALIDATION ---------
+# 🚨 FIXED: UPDATED SIGNAL SENDING WITH STRICT EXPIRY VALIDATION 🚨
 def send_signal(index, side, df, fakeout, strategy_key):
     global signal_counter, all_generated_signals
     
@@ -1590,11 +1605,12 @@ def send_signal(index, side, df, fakeout, strategy_key):
     if not can_send_signal(index, strike, side):
         return
         
-    # 🚨 FIXED: Each index only sends its own symbol with its own expiry validation
+    # 🚨 FIXED: STRICT EXPIRY ENFORCEMENT - Only use specified expiries
     symbol = get_option_symbol(index, EXPIRIES[index], strike, side)
     
     if symbol is None:
         # 🚨 SILENT REJECTION - No Telegram message for wrong expiry!
+        print(f"❌ STRICT EXPIRY ENFORCEMENT: {index} {strike}{side} - Only {EXPIRIES[index]} allowed")
         return  # Just exit quietly without sending any message
     
     option_price = fetch_option_price(symbol)
@@ -1827,7 +1843,7 @@ while True:
                          "✅ Expiry Day Gamma Blast After 1 PM\n"
                          "✅ Signal Deduplication & Cooldown\n"
                          "✅ Guaranteed EOD Reports at 3:30 PM\n"
-                         "✅ STRICT EXPIRY ENFORCEMENT - Only specified expiries")
+                         "✅ 🚨 STRICT EXPIRY ENFORCEMENT - ONLY SPECIFIED EXPIRIES ALLOWED 🚨")
             STARTED_SENT = True
             STOP_SENT = False
             MARKET_CLOSED_SENT = False
